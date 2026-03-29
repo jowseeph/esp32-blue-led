@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ESP32 IoT Control Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:          #070b12;
+  --surface:     #0d1421;
+  --surface2:    #111c2e;
+  --border:      #1a2d47;
+  --border2:     #0f1e30;
+  --blue:        #0d6efd;
+  --blue-dim:    #0a4fa8;
+  --cyan:        #00d4ff;
+  --cyan-dim:    rgba(0,212,255,.15);
+  --green:       #00ff88;
+  --green-dim:   rgba(0,255,136,.12);
+  --red:         #ff3b5c;
+  --red-dim:     rgba(255,59,92,.12);
+  --yellow:      #ffc107;
+  --text:        #c9d8f0;
+  --text-dim:    #4a6080;
+  --text-bright: #e8f4ff;
+  --mono:        'Share Tech Mono', monospace;
+  --head:        'Rajdhani', sans-serif;
+  --body:        'Exo 2', sans-serif;
+}
+
+html,body{
+  min-height:100vh;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--body);
+  overflow-x:hidden;
+}
+
+/* ── Scanline overlay ── */
+body::after{
+  content:'';
+  position:fixed;inset:0;
+  background:repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,.08) 2px,
+    rgba(0,0,0,.08) 4px
+  );
+  pointer-events:none;z-index:999;
+}
+
+/* ── Animated bg gradient ── */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 20%, rgba(13,110,253,.07) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 80% 80%, rgba(0,212,255,.05) 0%, transparent 60%);
+  pointer-events:none;
+}
+
+/* ══════════════════ LAYOUT ══════════════════ */
+.shell{
+  max-width:1100px;
+  margin:0 auto;
+  padding:1.5rem 1.25rem 3rem;
+  display:flex;
+  flex-direction:column;
+  gap:1.25rem;
+}
+
+/* ── Top Bar ── */
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:.75rem 1.25rem;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:.6rem;
+  position:relative;
+  overflow:hidden;
+}
+.topbar::before{
+  content:'';
+  position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+  opacity:.4;
+}
+.topbar-brand{
+  display:flex;align-items:center;gap:.75rem;
+}
+.topbar-icon{
+  width:36px;height:36px;
+  background:linear-gradient(135deg,#0d2a4a,#0d6efd33);
+  border:1px solid rgba(13,110,253,.4);
+  border-radius:.4rem;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.1rem;
+}
+.topbar-title{
+  font-family:var(--head);
+  font-size:1.35rem;
+  font-weight:700;
+  letter-spacing:.12em;
+  color:var(--text-bright);
+  text-transform:uppercase;
+}
+.topbar-sub{
+  font-family:var(--mono);
+  font-size:.65rem;
+  color:var(--text-dim);
+  letter-spacing:.08em;
+}
+.topbar-right{
+  display:flex;align-items:center;gap:1rem;
+}
+.conn-badge{
+  display:flex;align-items:center;gap:.4rem;
+  padding:.3rem .7rem;
+  border-radius:999px;
+  font-family:var(--mono);
+  font-size:.68rem;
+  letter-spacing:.06em;
+  border:1px solid transparent;
+  transition:all .3s;
+}
+.conn-badge.online{
+  background:var(--green-dim);
+  border-color:rgba(0,255,136,.2);
+  color:var(--green);
+}
+.conn-badge.offline{
+  background:var(--red-dim);
+  border-color:rgba(255,59,92,.2);
+  color:var(--red);
+}
+.conn-badge.syncing{
+  background:rgba(255,193,7,.1);
+  border-color:rgba(255,193,7,.2);
+  color:var(--yellow);
+}
+.badge-dot{
+  width:6px;height:6px;
+  border-radius:50%;
+  background:currentColor;
+}
+.online .badge-dot{ animation:blink 1.5s ease-in-out infinite; }
+@keyframes blink{ 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.sys-time{
+  font-family:var(--mono);
+  font-size:.72rem;
+  color:var(--text-dim);
+}
+
+/* ── Grid Layout ── */
+.grid{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  grid-template-rows:auto auto;
+  gap:1.25rem;
+}
+
+/* ── Cards ── */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:.75rem;
+  padding:1.5rem;
+  position:relative;
+  overflow:hidden;
+  transition:border-color .3s, box-shadow .3s;
+}
+.card::after{
+  content:'';
+  position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(13,110,253,.3),transparent);
+}
+.card-label{
+  font-family:var(--mono);
+  font-size:.65rem;
+  letter-spacing:.12em;
+  color:var(--text-dim);
+  text-transform:uppercase;
+  margin-bottom:1rem;
+  display:flex;align-items:center;gap:.5rem;
+}
+.card-label::before{
+  content:'';
+  display:inline-block;width:3px;height:10px;
+  background:var(--blue);
+  border-radius:2px;
+}
+
+/* ══ CONTROL CARD (spans 2 cols) ══ */
+.card-control{
+  grid-column: 1 / 3;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:1.5rem;
+  padding:2rem 1.5rem;
+}
+.card-control.led-active{
+  border-color:rgba(13,110,253,.4);
+  box-shadow:0 0 40px rgba(13,110,253,.06), inset 0 0 60px rgba(13,110,253,.02);
+}
+
+/* Bulb Assembly */
+.bulb-assembly{
+  position:relative;
+  display:flex;align-items:center;justify-content:center;
+  width:180px;height:180px;
+}
+.ripple{
+  position:absolute;
+  border-radius:50%;
+  border:1px solid rgba(13,110,253,.15);
+  transition:opacity .5s, transform .5s;
+  opacity:0;
+}
+.ripple-1{ width:110px;height:110px; }
+.ripple-2{ width:140px;height:140px;transition-delay:.08s; }
+.ripple-3{ width:175px;height:175px;transition-delay:.16s; }
+.led-active .ripple{ opacity:1; }
+.led-active .ripple-1{
+  border-color:rgba(13,110,253,.35);
+  animation:ripple-pulse 2s ease-in-out infinite;
+}
+.led-active .ripple-2{
+  border-color:rgba(0,212,255,.2);
+  animation:ripple-pulse 2s ease-in-out infinite .3s;
+}
+.led-active .ripple-3{
+  border-color:rgba(13,110,253,.1);
+  animation:ripple-pulse 2s ease-in-out infinite .6s;
+}
+@keyframes ripple-pulse{
+  0%,100%{transform:scale(1);opacity:1}
+  50%{transform:scale(1.04);opacity:.6}
+}
+
+.bulb-core{
+  position:relative;
+  width:88px;height:88px;
+  border-radius:50%;
+  background:radial-gradient(circle at 40% 35%, #1a2d47, #0d1421);
+  border:2px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  transition:all .4s cubic-bezier(.4,0,.2,1);
+  z-index:2;
+}
+.led-active .bulb-core{
+  background:radial-gradient(circle at 40% 35%, #1a5fd4, #0d4ab8);
+  border-color:rgba(0,212,255,.6);
+  box-shadow:
+    0 0 20px rgba(13,110,253,.8),
+    0 0 50px rgba(13,110,253,.4),
+    0 0 100px rgba(13,110,253,.15),
+    inset 0 0 20px rgba(0,212,255,.2);
+}
+.bulb-filament{
+  width:34px;height:34px;
+  color:rgba(255,255,255,.2);
+  transition:color .4s, filter .4s;
+}
+.led-active .bulb-filament{
+  color:rgba(255,255,255,.95);
+  filter:drop-shadow(0 0 6px rgba(255,255,255,.8));
+}
+
+/* LED label under bulb */
+.led-id-tag{
+  font-family:var(--mono);
+  font-size:.65rem;
+  letter-spacing:.1em;
+  color:var(--text-dim);
+  text-align:center;
+  margin-top:-.5rem;
+}
+
+/* Status pill */
+.status-pill{
+  display:flex;align-items:center;gap:.5rem;
+  padding:.4rem 1.2rem;
+  border-radius:999px;
+  font-family:var(--mono);
+  font-size:.8rem;
+  font-weight:700;
+  letter-spacing:.1em;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  transition:all .35s;
+}
+.led-active .status-pill{
+  background:rgba(13,110,253,.12);
+  border-color:rgba(0,212,255,.35);
+  color:#7dd3fc;
+}
+.pill-dot{
+  width:8px;height:8px;
+  border-radius:50%;
+  background:var(--text-dim);
+  transition:background .35s, box-shadow .35s;
+}
+.led-active .pill-dot{
+  background:var(--cyan);
+  box-shadow:0 0 8px var(--cyan);
+  animation:blink 1.4s infinite;
+}
+
+/* Toggle Button */
+.toggle-btn{
+  position:relative;
+  width:100%;max-width:260px;
+  padding:1rem 2rem;
+  border-radius:.6rem;
+  border:1px solid var(--border);
+  background:linear-gradient(135deg,#0a2550,#0d3a80);
+  color:#fff;
+  font-family:var(--head);
+  font-size:1.1rem;
+  font-weight:600;
+  letter-spacing:.15em;
+  text-transform:uppercase;
+  cursor:pointer;
+  overflow:hidden;
+  transition:all .25s;
+  -webkit-tap-highlight-color:transparent;
+}
+.toggle-btn::before{
+  content:'';
+  position:absolute;top:0;left:-100%;width:100%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);
+  transition:left .4s;
+}
+.toggle-btn:hover::before{ left:100%; }
+.toggle-btn:hover{
+  background:linear-gradient(135deg,#0d3a80,#1a5fd4);
+  border-color:rgba(0,212,255,.4);
+  box-shadow:0 4px 24px rgba(13,110,253,.35);
+  transform:translateY(-1px);
+}
+.toggle-btn:active{ transform:translateY(0) scale(.98); }
+.toggle-btn.off-state{
+  background:linear-gradient(135deg,#0a0f1a,#111c2e);
+  border-color:var(--border);
+}
+.toggle-btn.off-state:hover{
+  background:linear-gradient(135deg,#111c2e,#1a2d47);
+  border-color:rgba(0,212,255,.2);
+  box-shadow:none;
+}
+.toggle-btn:disabled{
+  opacity:.45;cursor:not-allowed;transform:none;
+}
+.toggle-btn:disabled::before{ display:none; }
+
+/* ══ STATUS CARD ══ */
+.card-status{
+  grid-column:3 / 4;
+  grid-row:1 / 2;
+}
+.stat-block{
+  display:flex;
+  flex-direction:column;
+  gap:.9rem;
+}
+.stat-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:.5rem .6rem;
+  background:var(--surface2);
+  border:1px solid var(--border2);
+  border-radius:.4rem;
+}
+.stat-key{
+  font-family:var(--mono);
+  font-size:.65rem;
+  color:var(--text-dim);
+  letter-spacing:.06em;
+}
+.stat-val{
+  font-family:var(--mono);
+  font-size:.75rem;
+  color:var(--cyan);
+  text-align:right;
+  max-width:55%;
+  word-break:break-all;
+}
+.stat-val.green{ color:var(--green); }
+.stat-val.red  { color:var(--red); }
+.stat-val.yellow{ color:var(--yellow); }
+
+/* ══ LOG CARD ══ */
+.card-log{
+  grid-column:1 / 3;
+}
+.log-scroll{
+  display:flex;
+  flex-direction:column;
+  gap:.35rem;
+  max-height:160px;
+  overflow-y:auto;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border) transparent;
+}
+.log-scroll::-webkit-scrollbar{ width:4px; }
+.log-scroll::-webkit-scrollbar-track{ background:transparent; }
+.log-scroll::-webkit-scrollbar-thumb{ background:var(--border);border-radius:2px; }
+
+.log-row{
+  display:grid;
+  grid-template-columns:5.5rem .8rem 1fr;
+  gap:.5rem;
+  align-items:start;
+  padding:.3rem .5rem;
+  border-radius:.3rem;
+  background:var(--surface2);
+  border:1px solid var(--border2);
+  font-family:var(--mono);
+  font-size:.67rem;
+  animation:logIn .2s ease;
+}
+@keyframes logIn{
+  from{opacity:0;transform:translateY(6px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.log-time{ color:var(--text-dim); }
+.log-icon-ok { color:var(--green); }
+.log-icon-err{ color:var(--red); }
+.log-icon-inf{ color:var(--cyan); }
+.log-msg{ color:var(--text); line-height:1.5; }
+
+/* ══ DEVICE CARD ══ */
+.card-device{
+  grid-column:3 / 4;
+  grid-row:2 / 3;
+}
+.device-block{
+  display:flex;flex-direction:column;gap:.7rem;
+}
+.device-chip{
+  display:flex;align-items:center;gap:.6rem;
+  padding:.55rem .7rem;
+  background:var(--surface2);
+  border:1px solid var(--border2);
+  border-radius:.45rem;
+}
+.chip-icon{
+  width:28px;height:28px;
+  border-radius:.3rem;
+  background:rgba(13,110,253,.1);
+  border:1px solid rgba(13,110,253,.2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:.85rem;flex-shrink:0;
+}
+.chip-info{}
+.chip-name{
+  font-family:var(--head);
+  font-size:.8rem;
+  font-weight:600;
+  color:var(--text-bright);
+  letter-spacing:.06em;
+}
+.chip-detail{
+  font-family:var(--mono);
+  font-size:.62rem;
+  color:var(--text-dim);
+}
+
+/* ══ PROGRESS BAR (poll indicator) ══ */
+.poll-bar-wrap{
+  width:100%;
+  display:flex;flex-direction:column;gap:.4rem;
+}
+.poll-bar-label{
+  display:flex;justify-content:space-between;
+  font-family:var(--mono);font-size:.62rem;color:var(--text-dim);
+}
+.poll-bar-track{
+  height:3px;
+  background:var(--border);
+  border-radius:2px;
+  overflow:hidden;
+}
+.poll-bar-fill{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,var(--blue),var(--cyan));
+  border-radius:2px;
+  transition:width .1s linear;
+}
+
+/* ══ RESPONSIVE ══ */
+@media(max-width:768px){
+  .grid{
+    grid-template-columns:1fr;
+    grid-template-rows:auto;
+  }
+  .card-control{ grid-column:1; }
+  .card-status { grid-column:1;grid-row:auto; }
+  .card-log    { grid-column:1; }
+  .card-device { grid-column:1;grid-row:auto; }
+  .topbar-right .sys-time{ display:none; }
+  .topbar-title{ font-size:1.1rem; }
+}
+@media(max-width:480px){
+  .shell{ padding:1rem .75rem 2rem; }
+  .card-control{ padding:1.5rem 1rem; }
+  .toggle-btn{ max-width:100%; }
+  .bulb-assembly{ width:150px;height:150px; }
+  .bulb-core{ width:76px;height:76px; }
+}
+
+/* ── Page load animation ── */
+.card{ animation:cardIn .4s ease both; }
+.card:nth-child(1){ animation-delay:.05s; }
+.card:nth-child(2){ animation-delay:.1s; }
+.card:nth-child(3){ animation-delay:.15s; }
+.card:nth-child(4){ animation-delay:.2s; }
+@keyframes cardIn{
+  from{opacity:0;transform:translateY(16px)}
+  to{opacity:1;transform:translateY(0)}
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ══ TOP BAR ══ -->
+  <header class="topbar" style="animation:cardIn .3s ease both">
+    <div class="topbar-brand">
+      <div class="topbar-icon">⚡</div>
+      <div>
+        <div class="topbar-title">ESP32 Control Panel</div>
+        <div class="topbar-sub">IoT · Supabase Cloud · LED Module</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="sys-time" id="sysTime">--:--:--</span>
+      <div class="conn-badge syncing" id="connBadge">
+        <div class="badge-dot"></div>
+        <span id="connText">CONNECTING</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══ MAIN GRID ══ -->
+  <main class="grid">
+
+    <!-- ① LED CONTROL (2 cols) -->
+    <div class="card card-control" id="controlCard">
+      <div class="card-label">LED Control · GPIO Pin 2</div>
+
+      <div class="bulb-assembly" id="bulbAssembly">
+        <div class="ripple ripple-3"></div>
+        <div class="ripple ripple-2"></div>
+        <div class="ripple ripple-1"></div>
+        <div class="bulb-core" id="bulbCore">
+          <svg class="bulb-filament" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 21h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-1z"/>
+            <path d="M12 2a7 7 0 0 0-4 12.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26A7 7 0 0 0 12 2z"/>
+            <circle cx="12" cy="9" r="2.5" fill="rgba(255,255,255,.25)"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="led-id-tag">LED_PIN · D2 · ID:1</div>
+
+      <div class="status-pill" id="statusPill">
+        <div class="pill-dot"></div>
+        <span id="pillText">LOADING…</span>
+      </div>
+
+      <button class="toggle-btn off-state" id="toggleBtn" onclick="toggleLED()" disabled>
+        ⬡ &nbsp;INITIALIZING
+      </button>
+
+      <div class="poll-bar-wrap" style="max-width:260px;width:100%">
+        <div class="poll-bar-label">
+          <span>NEXT POLL</span>
+          <span id="pollCountdown">--</span>
+        </div>
+        <div class="poll-bar-track">
+          <div class="poll-bar-fill" id="pollBar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② SYSTEM STATUS -->
+    <div class="card card-status">
+      <div class="card-label">System Status</div>
+      <div class="stat-block">
+        <div class="stat-row">
+          <span class="stat-key">DB STATUS</span>
+          <span class="stat-val" id="statDB">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">LED STATE</span>
+          <span class="stat-val" id="statLED">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">LAST UPDATE</span>
+          <span class="stat-val" id="statUpdated">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">TOTAL TOGGLES</span>
+          <span class="stat-val" id="statToggles">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">POLL INTERVAL</span>
+          <span class="stat-val">4 000 ms</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-key">RECORD ID</span>
+          <span class="stat-val">id = 1</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ ACTIVITY LOG -->
+    <div class="card card-log">
+      <div class="card-label" style="justify-content:space-between">
+        <span>Activity Log</span>
+        <span style="font-size:.62rem;color:var(--text-dim);cursor:pointer;letter-spacing:.04em" onclick="clearLog()">CLEAR</span>
+      </div>
+      <div class="log-scroll" id="logScroll">
+        <div class="log-row">
+          <span class="log-time">--:--:--</span>
+          <span class="log-icon-inf">◈</span>
+          <span class="log-msg">Dashboard initialized. Connecting to Supabase…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ④ DEVICE INFO -->
+    <div class="card card-device">
+      <div class="card-label">Device Info</div>
+      <div class="device-block">
+        <div class="device-chip">
+          <div class="chip-icon">🔌</div>
+          <div class="chip-info">
+            <div class="chip-name">ESP32 DevKit</div>
+            <div class="chip-detail">Xtensa LX6 · 240 MHz · WiFi+BT</div>
+          </div>
+        </div>
+        <div class="device-chip">
+          <div class="chip-icon">📶</div>
+          <div class="chip-info">
+            <div class="chip-name">Joshua-2.4G</div>
+            <div class="chip-detail">2.4 GHz · Poll mode · TCP/IP</div>
+          </div>
+        </div>
+        <div class="device-chip">
+          <div class="chip-icon">🗄️</div>
+          <div class="chip-info">
+            <div class="chip-name">Supabase Cloud</div>
+            <div class="chip-detail">REST API · table: led_control</div>
+          </div>
+        </div>
+        <div class="device-chip">
+          <div class="chip-icon">💡</div>
+          <div class="chip-info">
+            <div class="chip-name">LED · GPIO 2</div>
+            <div class="chip-detail">Built-in LED · Active HIGH</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main><!-- /grid -->
+</div><!-- /shell -->
+
+<!-- ══════════════ JAVASCRIPT ══════════════ -->
+<script>
+const SUPABASE_URL = "https://vszeihhsgzmqadnrwckq.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzemVpaGhzZ3ptcWFkbnJ3Y2txIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MzM0OTYsImV4cCI6MjA5MDAwOTQ5Nn0.w3u5N-uRh6YZeLddDYRM1WJ2Ij-ds_Y-tDTBvlzPn40";
+const POLL_MS = 4000;
+
+let currentStatus = null;
+let isBusy = false;
+let toggleCount = 0;
+let pollTimer = null;
+let pollBarTimer = null;
+let pollStart = Date.now();
+
+// DOM refs
+const controlCard = document.getElementById('controlCard');
+const bulbAssembly= document.getElementById('bulbAssembly');
+const statusPill  = document.getElementById('statusPill');
+const pillText    = document.getElementById('pillText');
+const toggleBtn   = document.getElementById('toggleBtn');
+const logScroll   = document.getElementById('logScroll');
+const connBadge   = document.getElementById('connBadge');
+const connText    = document.getElementById('connText');
+const statDB      = document.getElementById('statDB');
+const statLED     = document.getElementById('statLED');
+const statUpdated = document.getElementById('statUpdated');
+const statToggles = document.getElementById('statToggles');
+const pollBar     = document.getElementById('pollBar');
+const pollCountdown=document.getElementById('pollCountdown');
+
+// ── Supabase headers ──
+function hdr(){
+  return {
+    "apikey":        SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type":  "application/json",
+    "Prefer":        "return=representation"
+  };
+}
+
+// ── Clock ──
+function updateClock(){
+  document.getElementById('sysTime').textContent =
+    new Date().toLocaleTimeString('en-US',{hour12:false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Poll progress bar ──
+function startPollBar(){
+  clearInterval(pollBarTimer);
+  pollStart = Date.now();
+  pollBarTimer = setInterval(()=>{
+    const elapsed = Date.now() - pollStart;
+    const pct = Math.min((elapsed/POLL_MS)*100, 100);
+    pollBar.style.width = pct + '%';
+    const rem = Math.max(0, ((POLL_MS - elapsed)/1000)).toFixed(1);
+    pollCountdown.textContent = rem + 's';
+  }, 80);
+}
+
+// ── Connection badge ──
+function setBadge(state){
+  connBadge.className = 'conn-badge ' + state;
+  connText.textContent = state.toUpperCase();
+}
+
+// ── Log ──
+function ts(){ return new Date().toLocaleTimeString('en-US',{hour12:false}); }
+
+function addLog(msg, type='inf'){
+  const icons = {ok:'◉', err:'◌', inf:'◈'};
+  const div = document.createElement('div');
+  div.className = 'log-row';
+  div.innerHTML =
+    `<span class="log-time">${ts()}</span>`+
+    `<span class="log-icon-${type}">${icons[type]||'◈'}</span>`+
+    `<span class="log-msg">${msg}</span>`;
+  logScroll.appendChild(div);
+  while(logScroll.children.length > 30) logScroll.removeChild(logScroll.firstChild);
+  logScroll.scrollTop = logScroll.scrollHeight;
+}
+
+function clearLog(){
+  logScroll.innerHTML='';
+  addLog('Log cleared.','inf');
+}
+
+// ── Apply UI state ──
+function applyState(on){
+  currentStatus = on;
+  const active = on;
+
+  // Card & bulb glow
+  [controlCard, bulbAssembly, statusPill].forEach(el=>{
+    el.classList.toggle('led-active', active);
+  });
+
+  pillText.textContent = on ? 'ONLINE · LED ON' : 'STANDBY · LED OFF';
+
+  toggleBtn.textContent = on ? '⬡   TURN  OFF' : '⬡   TURN  ON';
+  toggleBtn.className = `toggle-btn${on ? '' : ' off-state'}`;
+  toggleBtn.disabled = false;
+
+  // Stats
+  statLED.textContent = on ? 'HIGH (ON)' : 'LOW (OFF)';
+  statLED.className   = `stat-val ${on ? 'green' : 'red'}`;
+  statUpdated.textContent = ts();
+  statDB.textContent  = 'CONNECTED';
+  statDB.className    = 'stat-val green';
+}
+
+// ── Fetch ──
+async function fetchStatus(){
+  setBadge('syncing');
+  try{
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/led_control?id=eq.1&select=led_status,updated_at`,
+      {headers:hdr()}
+    );
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if(data.length > 0){
+      const incoming = data[0].led_status;
+      setBadge('online');
+      if(incoming !== currentStatus){
+        applyState(incoming);
+        addLog(`Polled → LED is ${incoming?'ON':'OFF'}`, 'ok');
+      } else if(currentStatus === null){
+        applyState(incoming);
+        addLog(`Initial state loaded → ${incoming?'ON':'OFF'}`, 'ok');
+      }
+    }
+  }catch(err){
+    setBadge('offline');
+    statDB.textContent = 'ERROR';
+    statDB.className   = 'stat-val red';
+    addLog(`Poll failed: ${err.message}`, 'err');
+    if(currentStatus === null){
+      pillText.textContent='DB ERROR';
+      toggleBtn.textContent='⬡   RETRY';
+      toggleBtn.disabled=false;
+    }
+  }
+  startPollBar();
+}
+
+// ── Toggle ──
+async function toggleLED(){
+  if(isBusy) return;
+  isBusy=true;
+  toggleBtn.disabled=true;
+  const newStatus = !currentStatus;
+  setBadge('syncing');
+
+  try{
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/led_control?id=eq.1`,
+      {
+        method:'PATCH',
+        headers:hdr(),
+        body: JSON.stringify({led_status: newStatus})
+      }
+    );
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    applyState(newStatus);
+    toggleCount++;
+    statToggles.textContent = toggleCount;
+    setBadge('online');
+    addLog(`Sent PATCH → LED ${newStatus?'ON':'OFF'}`, 'ok');
+  }catch(err){
+    setBadge('offline');
+    addLog(`PATCH failed: ${err.message}`, 'err');
+    toggleBtn.disabled=false;
+  }
+
+  isBusy=false;
+}
+
+// ── Boot ──
+fetchStatus();
+pollTimer = setInterval(fetchStatus, POLL_MS);
+startPollBar();
+</script>
+</body>
+</html>
